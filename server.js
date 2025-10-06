@@ -9,7 +9,7 @@ const path = require('path'); // Импортируем модуль path
 // --- УСТАНАВЛИВАЕМ ПУТЬ К СЕРТИФИКАТУ ---
 // Это официальный способ, рекомендованный в документации Node.js
 // Мы указываем путь к нашему файлу сертификата внутри проекта.
-process.env.NODE_EXTRA_CA_CERTS = path.resolve(__dirname, 'certs', 'russian_trusted_root_ca.pem');
+process.env.NODE_EXTRA_CA_CERTS = path.resolve(__dirname, 'certs', 'russian_trusted_root_ca.cer');
 
 const app = express();
 app.use(express.json());
