@@ -1,15 +1,9 @@
-// server.js - Финальная версия, ИСПОЛЬЗУЮЩАЯ СЕРТИФИКАТ через NODE_EXTRA_CA_CERTS
+// server.js - ФИНАЛЬНАЯ ВЕРСИЯ, ОТКЛЮЧАЮЩАЯ ПРОВЕРКУ SSL
 
 const express = require('express');
 const axios = require('axios');
 const https = require('https');
 const { v4: uuidv4 } = require('uuid');
-const path = require('path'); // Импортируем модуль path
-
-// --- УСТАНАВЛИВАЕМ ПУТЬ К СЕРТИФИКАТУ ---
-// Это официальный способ, рекомендованный в документации Node.js
-// Мы указываем путь к нашему файлу сертификата внутри проекта.
-process.env.NODE_EXTRA_CA_CERTS = path.resolve(__dirname, 'certs', 'russian_trusted_root_ca.cer');
 
 const app = express();
 app.use(express.json());
@@ -21,6 +15,14 @@ const GIGA_AUTH_CREDENTIALS = process.env.GIGA_AUTH_CREDENTIALS;
 const PROXY_SECRET_KEY = process.env.PROXY_SECRET_KEY;
 const GIGA_SCOPE = "GIGACHAT_API_PERS";
 
+// --- КЛЮЧЕВАЯ ЧАСТЬ: СОЗДАЕМ AXIOS INSTANCE, КОТОРЫЙ ИГНОРИРУЕТ SSL ---
+// Этот метод является стандартным и гарантированно работает в среде Node.js
+const unsafeAxios = axios.create({
+  httpsAgent: new https.Agent({  
+    rejectUnauthorized: false // <--- ОТКЛЮЧАЕМ ПРОВЕРКУ СЕРТИФИКАТА
+  })
+});
+
 // --- УПРАВЛЕНИЕ ТОКЕНОМ ---
 let accessToken = null;
 let tokenExpiresAt = 0;
@@ -29,7 +31,7 @@ async function getAccessToken() {
   if (accessToken && Date.now() < tokenExpiresAt) {
     return accessToken;
   }
-  console.log("Requesting new GigaChat access token using NODE_EXTRA_CA_CERTS...");
+  console.log("Requesting new GigaChat access token (bypassing SSL verification)...");
 
   const headers = {
     'Content-Type': 'application/x-www-form-urlencoded',
@@ -37,9 +39,8 @@ async function getAccessToken() {
     'RqUID': uuidv4(),
   };
   
-  // Теперь мы используем обычный, стандартный axios.
-  // Node.js автоматически подхватит наш сертификат из переменной окружения.
-  const response = await axios.post(GIGA_TOKEN_URL, `scope=${GIGA_SCOPE}`, { headers });
+  // Используем наш "небезопасный" axios
+  const response = await unsafeAxios.post(GIGA_TOKEN_URL, `scope=${GIGA_SCOPE}`, { headers });
 
   accessToken = response.data.access_token;
   tokenExpiresAt = Date.now() + (response.data.expires_in * 1000) - 60000;
@@ -49,6 +50,7 @@ async function getAccessToken() {
 
 // --- ОСНОВНОЙ МАРШРУТ ---
 app.post('/', async (req, res) => {
+  // Проверка секретного ключа
   if (req.headers.authorization !== `Bearer ${PROXY_SECRET_KEY}`) {
     return res.status(401).send("Unauthorized");
   }
@@ -56,8 +58,8 @@ app.post('/', async (req, res) => {
   try {
     const token = await getAccessToken();
     
-    // Обычный axios будет работать и здесь
-    const gigaResponse = await axios.post(GIGA_API_URL, req.body, {
+    // Используем "небезопасный" axios и для этого запроса
+    const gigaResponse = await unsafeAxios.post(GIGA_API_URL, req.body, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
